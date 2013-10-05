@@ -12,7 +12,10 @@ int set_child_pgid(job_t *j, process_t *p)
     return(setpgid(p->pid,j->pgid));
 }
 
-job_t * job_list;
+job_t * job_list; 
+char init_dir[] = "~";
+char * PWD = init_dir;
+
 
 /* Creates the context for a new child by setting the pid, pgid and tcsetpgrp */
 void new_child(job_t *j, process_t *p, bool fg)
@@ -61,7 +64,7 @@ void spawn_job(job_t *j, bool fg)
 	  job_list = malloc(sizeof(job_t));
 	}
 	else{
-	  job_list = realloc(sizeof(job_t) + sizeof(job_list));
+	  job_list = realloc(job_list, sizeof(job_t) + sizeof(job_list));
 	}
 	job_t *last_job  = find_last_job(job_list);
 	last_job->next = j;
@@ -131,14 +134,18 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
         }
 	else if (!strcmp("cd", argv[0])) {
             /* Your code here */
-	  
-	  
+	  char * path = argv[1];
+	  PWD = path;	  
+	  return true; //can improve
         }
         else if (!strcmp("bg", argv[0])) {
             /* Your code here */
+	  //TO-DO
+	  return true;
         }
         else if (!strcmp("fg", argv[0])) {
             /* Your code here */
+	  
         }
         return false;       /* not a builtin command */
 }
@@ -147,13 +154,12 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 char* promptmsg() 
 {
     /* Modify this to include pid */
-  static  char prompt[20]; //bit arbitrary in length
+  static  char prompt[MAX_LEN_CMDLINE]; //bit arbitrary in length
 
   pid_t pid;
   pid = getpid();
   
-  sprintf(prompt, "dsh - %d$", pid);
-
+  sprintf(prompt, "dsh -:%d$:%s ", pid, PWD);
   return prompt;
 }
 
