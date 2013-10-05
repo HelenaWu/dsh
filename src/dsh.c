@@ -43,6 +43,7 @@ void new_child(job_t *j, process_t *p, bool fg)
 	   {
 	     seize_tty(j->pgid); // assign the terminal
 	   }
+
 	 
          /* Set the handling for job control signals back to the default. */
          signal(SIGTTOU, SIG_DFL);
@@ -68,6 +69,7 @@ void spawn_job(job_t *j, bool fg)
 	for(p = j->first_process; p; p = p->next) {
 
 	  /* Builtin commands are already taken care earlier */
+
 	  
 	  switch (pid = fork()) {
 
@@ -77,8 +79,9 @@ void spawn_job(job_t *j, bool fg)
 
           case 0: /* child process  */
             p->pid = getpid();	    
-            new_child(j, p, fg);
-	    
+            new_child(j, p, fg);	    
+
+
 	    //print args to terminal
 	    fprintf(stdout,"\n%d(Launched): ",p->pid);
 	    int i;
@@ -90,6 +93,7 @@ void spawn_job(job_t *j, bool fg)
 	    //
 	    
 	    //TODO: PIPES, file descriptor close?
+
 
 	    //redirect input (<)
 	    if (p->ifile)
@@ -121,6 +125,7 @@ void spawn_job(job_t *j, bool fg)
 
 	    execvp(p->argv[0],p->argv); //TODO: change to execvP for cd purposes?
 
+
 	    //an error occurred in execvp
             perror("execvp: ");
             exit(EXIT_FAILURE);  /* NOT REACHED */
@@ -130,9 +135,10 @@ void spawn_job(job_t *j, bool fg)
             /* establish child process group */
             p->pid = pid;
             set_child_pgid(j, p);
-	    int pipefd;
-	    
-	    
+
+
+            /* YOUR CODE HERE?  Parent-side code for new process.  */	    
+
           } //end switch
 
 	  seize_tty(getpid()); //assign the terminal back to dsh
