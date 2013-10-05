@@ -30,6 +30,7 @@ void new_child(job_t *j, process_t *p, bool fg)
          /* also establish child process group in child to avoid race (if parent has not done it yet). */
          set_child_pgid(j, p);
 
+
          if(fg) // if fg is set
 		seize_tty(j->pgid); // assign the terminal
 
@@ -52,7 +53,11 @@ void spawn_job(job_t *j, bool fg)
 
 	pid_t pid;
 	process_t *p;
+	//int fd[2]; //might need this for later io redirection
 
+
+	int i;
+	
 	for(p = j->first_process; p; p = p->next) {
 
 	  /* YOUR CODE HERE? */
@@ -67,7 +72,24 @@ void spawn_job(job_t *j, bool fg)
           case 0: /* child process  */
             p->pid = getpid();	    
             new_child(j, p, fg);
-            
+	    
+	    //print args to terminal
+	    fprintf(stdout,"\n%d(Launched): ",p->pid);
+	    for(i=0;i<p->argc;i++)
+	      {
+		fprintf(stdout,"%s ",p->argv[i]);
+	      }
+	    fprintf(stdout,"\n");
+	    //
+	    
+	    //TODO: REDIRECT STDIN AND STDOUT
+
+	    int e=execvp(p->argv[0],p->argv);
+	    if (e<0)
+	      {
+		fprintf(stderr,"exec err: %s\n",strerror(errno));
+	      }
+
 	    /* YOUR CODE HERE?  Child-side code for new process. */
             perror("New child should have done an exec");
             exit(EXIT_FAILURE);  /* NOT REACHED */
@@ -78,13 +100,27 @@ void spawn_job(job_t *j, bool fg)
             p->pid = pid;
             set_child_pgid(j, p);
 
+	 
             /* YOUR CODE HERE?  Parent-side code for new process.  */
-          }
+          } //end switch
 
+	  //TODO: CHECK THIS
+	  int status;
+	  waitpid(-1,&status,0);
+	  if (WIFEXITED(status)) //successful exit
+	    {
+	      j->first_process->stopped=true;
+	      
+	    }
+	  
+	  if (job_is_stopped(j)){
+	    fprintf(stdout,"returning to dsh\n");
+	    
             /* YOUR CODE HERE?  Parent-side code for new job.*/
 	    seize_tty(getpid()); // assign the terminal back to dsh
-
-	}
+	    }
+	    
+	} //end loop
 }
 
 /* Sends SIGCONT signal to wake up the blocked job */
@@ -107,6 +143,7 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 
         if (!strcmp(argv[0], "quit")) {
             /* Your code here */
+	  
             exit(EXIT_SUCCESS);
 	}
         else if (!strcmp("jobs", argv[0])) {
@@ -129,12 +166,12 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 char* promptmsg() 
 {
     /* Modify this to include pid */
-  char prompt[20]; //bit arbitrary in length
+  static char prompt[20]; //bit arbitrary in length
 
   pid_t pid;
   pid = getpid();
   
-  sprintf(prompt, "dsh - %d$", pid);
+  sprintf(prompt, "dsh - %d$ ", pid);
 
   return prompt;
 }
@@ -163,9 +200,9 @@ int main()
 	while (j!=NULL)
 	  {
 	    process_t *p=j->first_process;
-	    while(p!-NULL)
+	    while(p!=NULL)
 	      {
-		if(!builtin_cmd(find_last_job(j),p->arc,p->argv))
+		if(!builtin_cmd(j,p->argc,p->argv))
 		  {
 		    //TODO: WHAT IS LAST JOB?
 		    spawn_job(j,!(j->bg));
