@@ -14,7 +14,7 @@ int set_child_pgid(job_t *j, process_t *p)
     return(setpgid(p->pid,j->pgid));
 }
 
-job_t * job_list; 
+
 char init_dir[] = "~";
 char * PWD = init_dir;
 
@@ -112,6 +112,7 @@ void spawn_job(job_t *j, bool fg)
 	  seize_tty(getpid()); //assign the terminal back to dsh
 	  
 	} //end loop
+
 }
 
 /* Sends SIGCONT signal to wake up the blocked job */
@@ -150,16 +151,48 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
         }
         else if (!strcmp("bg", argv[0])) {
             /* Your code here */
-	  //TO-DO
+	  //To-do
+
 	  return true;
         }
         else if (!strcmp("fg", argv[0])) {
             /* Your code here */
-	  
-        }
+	  //Bring into foreground job given pgid
+	  job_t * j;
+	  if(argv[1] == NULL){
+	    //find last suspended job
+	    for(j=job_list; j; j= j->next){
+	      job_t * last_suspended_j;
+	      if(job_is_stopped(j)){
+		last_suspended_j = j;
+	      }
+	      continue_job(last_suspended_j);
+	      seize_tty(last_suspended_j->pgid);
+	      return true;
+	  }
+
+	  /*if pgid is specified*/
+	    pid_t pgid = atol(argv[1]);
+	    for(j=job_list; j; j= j->next){
+	      if(j->pgid == pgid){
+		break;
+	      }
+	    }
+	    if(j==NULL){
+	      //log this error!
+	      FILE * f = NULL;
+	      f = fopen("dsh.log", "a+");
+	      fprintf(f, "pgid: %ld doesn't exist\n",(long)pgid);
+	      fclose(f);
+	      exit(1);
+	    }
+	    continue_job(j);
+	    seize_tty(pgid);
+	    return true;
+	  }
+	}
         return false;       /* not a builtin command */
 }
-
 /* Build prompt messaage */
 char* promptmsg() 
 {
@@ -172,6 +205,7 @@ char* promptmsg()
   sprintf(prompt, "dsh -:%d$:%s ", pid, PWD);
   return prompt;
 }
+
 
 int main() 
 {
@@ -192,6 +226,7 @@ int main()
 
         /* Only for debugging purposes to show parser output; turn off in the
          * final code */
+
 	//          if(PRINT_INFO) print_job(j);
 
 
@@ -202,14 +237,13 @@ int main()
 	}
 	else{
 	  job_list = realloc(job_list, sizeof(job_t) + sizeof(job_list));
+	
 	}
 	job_t *last_job  = find_last_job(job_list);
 	last_job->next = j;
-	
 
-	  while(j)
+	while(j)
 	  {
-	    
 	    process_t *p=j->first_process;
 	    // printf("\n ==== \njob: %s\n",j->commandinfo);
 	    //a built in will always be its own job ie a process group of 1
