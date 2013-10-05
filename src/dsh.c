@@ -12,6 +12,8 @@ int set_child_pgid(job_t *j, process_t *p)
     return(setpgid(p->pid,j->pgid));
 }
 
+job_t * job_list;
+
 /* Creates the context for a new child by setting the pid, pgid and tcsetpgrp */
 void new_child(job_t *j, process_t *p, bool fg)
 {
@@ -50,9 +52,22 @@ void new_child(job_t *j, process_t *p, bool fg)
 void spawn_job(job_t *j, bool fg) 
 {
 
+  
 	pid_t pid;
 	process_t *p;
 
+	/*add spawned job to job_list */
+	if(job_list == NULL){
+	  job_list = malloc(sizeof(job_t));
+	}
+	else{
+	  job_list = realloc(sizeof(job_t) + sizeof(job_list));
+	}
+	job_t *last_job  = find_last_job(job_list);
+	last_job->next = j;
+	
+	
+	
 	for(p = j->first_process; p; p = p->next) {
 
 	  /* YOUR CODE HERE? */
@@ -110,11 +125,14 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
             exit(EXIT_SUCCESS);
 	}
         else if (!strcmp("jobs", argv[0])) {
-            /* Your code here */
-            return true;
+	  /* Your code here */
+	  print_job(job_list);
+	  return true;
         }
 	else if (!strcmp("cd", argv[0])) {
             /* Your code here */
+	  
+	  
         }
         else if (!strcmp("bg", argv[0])) {
             /* Your code here */
@@ -129,7 +147,7 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 char* promptmsg() 
 {
     /* Modify this to include pid */
-  char prompt[20]; //bit arbitrary in length
+  static  char prompt[20]; //bit arbitrary in length
 
   pid_t pid;
   pid = getpid();
@@ -146,26 +164,26 @@ int main()
 	DEBUG("Successfully initialized\n");
 
 	while(1) {
-        job_t *j = NULL;
-		if(!(j = readcmdline(promptmsg()))) {
-			if (feof(stdin)) { /* End of file (ctrl-d) */
-				fflush(stdout);
-				printf("\n");
-				exit(EXIT_SUCCESS);
-           		}
-			continue; /* NOOP; user entered return or spaces with return */
-		}
+	  job_t *j = NULL;
+	  if(!(j = readcmdline(promptmsg()))) {
+	    if (feof(stdin)) { /* End of file (ctrl-d) */
+	      fflush(stdout);
+	      printf("\n");
+	      exit(EXIT_SUCCESS);
+	    }
+	    continue; /* NOOP; user entered return or spaces with return */
+	  }
 
         /* Only for debugging purposes to show parser output; turn off in the
          * final code */
-        if(PRINT_INFO) print_job(j);
+	  //        if(PRINT_INFO) print_job(j);
 
 	while (j!=NULL)
 	  {
 	    process_t *p=j->first_process;
-	    while(p!-NULL)
+	    while(p!=NULL)
 	      {
-		if(!builtin_cmd(find_last_job(j),p->arc,p->argv))
+		if(!builtin_cmd(j,p->argc,p->argv))
 		  {
 		    //TODO: WHAT IS LAST JOB?
 		    spawn_job(j,!(j->bg));
