@@ -153,6 +153,21 @@ int main()
          * final code */
         if(PRINT_INFO) print_job(j);
 
+	while (j!=NULL)
+	  {
+	    process_t *p=j->first_process;
+	    while(p!-NULL)
+	      {
+		if(!builtin_cmd(find_last_job(j),p->arc,p->argv))
+		  {
+		    //TODO: WHAT IS LAST JOB?
+		    spawn_job(j,!(j->bg));
+		  }
+		p=p->next;
+	      }
+	    j=j->next;
+	  }
+	
         /* Your code goes here */
         /* You need to loop through jobs list since a command line can contain ;*/
         /* Check for built-in commands */
