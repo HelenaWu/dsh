@@ -6,16 +6,12 @@
  * Team Info & Time spent
  *************************/
 
-	Name1: Full Name 	// Edit this accordingly
-	NetId1: fn	 	// Edit
+	Name1: Helena Wu 	// Edit this accordingly
+	NetId1: hw87	 	// Edit
 	Time spent: 10 hours 	// Edit 
 
-	Name2: Full Name 	// Edit this accordingly
-	NetId2: fn	 	// Edit
-	Time spent: 10 hours 	// Edit 
-
-	Name3: Full Name 	// Edit this accordingly
-	NetId3: fn	 	// Edit
+	Name2: Wendy Yin 	// Edit this accordingly
+	NetId2: wty3	 	// Edit
 	Time spent: 10 hours 	// Edit 
 
 /******************
@@ -24,6 +20,8 @@
 
 	dsh.c 	// Header file is not necessary; other *.c files if necessary
 	README	// This file filled with the lab implementation details
+
+Files also accessible at https://github.com/HelenaWu/dsh
 
 /************************
  * Implementation details
@@ -62,3 +60,7 @@
 /*
  * List of collaborators involved including any online references/citations.
  * */
+Consulted: 
+-man pages
+-CS:APP2	http://www.cs.duke.
+edu/courses/spring13/compsci210/internal/controlflow.pdf
