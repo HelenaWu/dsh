@@ -1,0 +1,13 @@
+1) Prompt includes process id
+2) Exit by ctl-d, quit
+3) Can contain 1 or more cmds
+4) ; => execute sequentially
+5) < > => redirect
+6) | => pipeline
+7) log errors in a dsh.log file
+8) & => runs in background
+9) Built-ins: jobs, bg, fg, cd
+10) Given path, list directory contents
+11) Automagically compile .c code
+12) Batch mode
+13) At exit of a process, print event and exit status, frees job number and discard record of the job.
