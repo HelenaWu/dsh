@@ -4,6 +4,9 @@ void seize_tty(pid_t callingprocess_pgid); /* Grab control of the terminal for t
 void continue_job(job_t *j); /* resume a stopped job */
 void spawn_job(job_t *j, bool fg); /* spawn a new job */
 
+job_t * job_list; /* keeps track of running/stopped jobs*/
+
+
 /* Sets the process group id for a given job and process */
 int set_child_pgid(job_t *j, process_t *p)
 {
@@ -32,8 +35,12 @@ void new_child(job_t *j, process_t *p, bool fg)
 
 
          if(fg) // if fg is set
-		seize_tty(j->pgid); // assign the terminal
-
+	   {
+	     
+	     printf("%d is seizing term\n",p->pid);
+	     seize_tty(j->pgid); // assign the terminal
+	   }
+	 
          /* Set the handling for job control signals back to the default. */
          signal(SIGTTOU, SIG_DFL);
 }
@@ -55,8 +62,15 @@ void spawn_job(job_t *j, bool fg)
 	process_t *p;
 	//int fd[2]; //might need this for later io redirection
 
-
-	int i;
+	if (job_list==NULL)
+	  {
+	    job_list = malloc(sizeof(job_t));
+	  } else {
+	  job_list=realloc(job_list,sizeof(job_t));
+	}
+	job_t *last_job = find_last_job(job_list);
+	last_job->next=j;
+	
 	
 	for(p = j->first_process; p; p = p->next) {
 
@@ -75,6 +89,7 @@ void spawn_job(job_t *j, bool fg)
 	    
 	    //print args to terminal
 	    fprintf(stdout,"\n%d(Launched): ",p->pid);
+	    int i;
 	    for(i=0;i<p->argc;i++)
 	      {
 		fprintf(stdout,"%s ",p->argv[i]);
@@ -84,7 +99,7 @@ void spawn_job(job_t *j, bool fg)
 	    
 	    //TODO: REDIRECT STDIN AND STDOUT
 
-	    int e=execvp(p->argv[0],p->argv);
+	    int e=execvp(p->argv[0],p->argv); //TODO: change to execvP for cd purposes
 	    if (e<0)
 	      {
 		fprintf(stderr,"exec err: %s\n",strerror(errno));
@@ -104,22 +119,8 @@ void spawn_job(job_t *j, bool fg)
             /* YOUR CODE HERE?  Parent-side code for new process.  */
           } //end switch
 
-	  //TODO: CHECK THIS
-	  int status;
-	  waitpid(-1,&status,0);
-	  if (WIFEXITED(status)) //successful exit
-	    {
-	      j->first_process->stopped=true;
-	      
-	    }
+	  seize_tty(getpid()); //assign the terminal back to dsh
 	  
-	  if (job_is_stopped(j)){
-	    fprintf(stdout,"returning to dsh\n");
-	    
-            /* YOUR CODE HERE?  Parent-side code for new job.*/
-	    seize_tty(getpid()); // assign the terminal back to dsh
-	    }
-	    
 	} //end loop
 }
 
@@ -148,6 +149,8 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 	}
         else if (!strcmp("jobs", argv[0])) {
             /* Your code here */
+	  print_job(job_list);
+	  
             return true;
         }
 	else if (!strcmp("cd", argv[0])) {
@@ -165,7 +168,6 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 /* Build prompt messaage */
 char* promptmsg() 
 {
-    /* Modify this to include pid */
   static char prompt[20]; //bit arbitrary in length
 
   pid_t pid;
@@ -183,42 +185,59 @@ int main()
 	DEBUG("Successfully initialized\n");
 
 	while(1) {
-        job_t *j = NULL;
+	  job_t *j = NULL;
+	  
 		if(!(j = readcmdline(promptmsg()))) {
 			if (feof(stdin)) { /* End of file (ctrl-d) */
 				fflush(stdout);
 				printf("\n");
 				exit(EXIT_SUCCESS);
-           		}
+           		} //end ctrl-d
 			continue; /* NOOP; user entered return or spaces with return */
-		}
+		} //end if statement
 
         /* Only for debugging purposes to show parser output; turn off in the
          * final code */
-        if(PRINT_INFO) print_job(j);
+	//	if(PRINT_INFO) print_job(j);
 
-	while (j!=NULL)
+          while (j!=NULL)
 	  {
 	    process_t *p=j->first_process;
-	    while(p!=NULL)
+	    //a built in will always be its own job ie a process group of 1
+	    if(!builtin_cmd(j,p->argc,p->argv)){
+		spawn_job(j,!(j->bg));
+		
+		//check job status
+		if (j->bg) {
+		    waitpid(-1,&p->status,WNOHANG);
+		    seize_tty(getpid()); //do not wait for job to finish
+		} else {
+		  waitpid(-1,&p->status,0);
+		  fprintf(stdout,"finished,returning to dsh %d\n",getpid());
+		  seize_tty(getpid()); // assign the terminal back to dsh
+		}
+
+		if (WIFEXITED(p->status)) {
+		  printf("exited properly\n");
+		  p->completed=true;
+		}
+		else if (WIFSTOPPED(p->status)) {
+		  printf("stopped child of pgid %d\n",j->pgid);
+		  j->notified=true;
+		  p->stopped=true;
+		}
+	      } //end large if
+	      
+	    //where to delete jobs?
+	    if (j!=NULL)
 	      {
-		if(!builtin_cmd(j,p->argc,p->argv))
-		  {
-		    //TODO: WHAT IS LAST JOB?
-		    spawn_job(j,!(j->bg));
-		  }
-		p=p->next;
+		printf("job %s\n",j->commandinfo);
 	      }
+	    
 	    j=j->next;
-	  }
-	
-        /* Your code goes here */
-        /* You need to loop through jobs list since a command line can contain ;*/
-        /* Check for built-in commands */
-        /* If not built-in */
-            /* If job j runs in foreground */
-            /* spawn_job(j,true) */
-            /* else */
-            /* spawn_job(j,false) */
-    }
+	  } //end while
+	   
+	  printf("while\n");
+	  
+	} //end infinite while
 }
