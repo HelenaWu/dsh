@@ -9,6 +9,8 @@ job_t * job_list;
 char init_dir[] = "~";
 char * PWD = init_dir;
 
+
+
 /* Sets the process group id for a given job and process */
 int set_child_pgid(job_t *j, process_t *p)
 {
@@ -65,7 +67,6 @@ void spawn_job(job_t *j, bool fg)
 
 	for(p = j->first_process; p; p = p->next) {
 
-	  /* YOUR CODE HERE? */
 	  /* Builtin commands are already taken care earlier */
 	  
 	  switch (pid = fork()) {
@@ -88,7 +89,7 @@ void spawn_job(job_t *j, bool fg)
 	    fprintf(stdout,"\n");
 	    //
 	    
-	    //TODO: REDIRECT STDIN AND STDOUT
+	    //TODO: PIPES, file descriptor close?
 
 	    //redirect input (<)
 	    if (p->ifile)
@@ -103,10 +104,10 @@ void spawn_job(job_t *j, bool fg)
 		    exit(EXIT_FAILURE);
 		  }
 	      }
-	       //redirect input (<)
+	    //redirect output (>)
 	    if (p->ofile)
 	      {
-		if((fd[1]=open(p->ifile,O_CREAT&O_RDWR))<0)
+		if((fd[1]=open(p->ofile,(O_RDWR|O_CREAT),(S_IRWXU|S_IRWXG|S_IROTH)))<0)
 		  {
 		    perror("failed to open ofile");
 		    exit(EXIT_FAILURE);
@@ -116,23 +117,9 @@ void spawn_job(job_t *j, bool fg)
 		    exit(EXIT_FAILURE);
 		  }
 	      }
+	    //TODO: PIPES
 
-	    
-	    /*
-	    if (p->next)
-	      {
-		
-	    if (pipe(fd)==-1)
-	      {
-		perror("pipe");
-		exit(EXIT_FAILURE);
-	      }
-	      }
-	    */
-	    
-	    
-
-	    execvp(p->argv[0],p->argv); //TODO: change to execvP for cd purposes
+	    execvp(p->argv[0],p->argv); //TODO: change to execvP for cd purposes?
 
 	    //an error occurred in execvp
             perror("execvp: ");
@@ -144,8 +131,6 @@ void spawn_job(job_t *j, bool fg)
             p->pid = pid;
             set_child_pgid(j, p);
 	    int pipefd;
-	    
-	    
 	    
 	    
           } //end switch
@@ -234,10 +219,10 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 	}
         return false;       /* not a builtin command */
 }
-/* Build prompt messaage */
+
+/* Build prompt message */
 char* promptmsg() 
 {
-    /* Modify this to include pid */
   static  char prompt[MAX_LEN_CMDLINE]; //bit arbitrary in length
 
   pid_t pid;
@@ -246,7 +231,6 @@ char* promptmsg()
   sprintf(prompt, "dsh -:%d$:%s ", pid, PWD);
   return prompt;
 }
-
 
 int main() 
 {
@@ -267,7 +251,7 @@ int main()
 
         /* Only for debugging purposes to show parser output; turn off in the
          * final code */
-	          if(PRINT_INFO) print_job(j);
+	           if(PRINT_INFO) print_job(j);
 
 
 	/*add spawned job to job_list */
@@ -292,14 +276,13 @@ int main()
 		spawn_job(j,!(j->bg));
 		
 		//check job status
-		if (j->bg) {
+		if (j->bg) { //do not wait for job to finish
 		    waitpid(-1,&p->status,WNOHANG);
 		    printf("run job in bg\n");
 		    
-		    seize_tty(getpid()); //do not wait for job to finish
+		    seize_tty(getpid());
 		} else {
 		  waitpid(-1,&p->status,0);
-		  //fprintf(stdout,"finished,returning to dsh %d\n",getpid());
 		  seize_tty(getpid()); // assign the terminal back to dsh
 		}
 
