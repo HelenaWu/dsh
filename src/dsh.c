@@ -5,6 +5,9 @@ void continue_job(job_t *j); /* resume a stopped job */
 void spawn_job(job_t *j, bool fg); /* spawn a new job */
 
 job_t * job_list; /* keeps track of running/stopped jobs*/
+job_t * job_list; 
+char init_dir[] = "~";
+char * PWD = init_dir;
 
 /* Sets the process group id for a given job and process */
 int set_child_pgid(job_t *j, process_t *p)
@@ -13,10 +16,6 @@ int set_child_pgid(job_t *j, process_t *p)
         j->pgid = p->pid;
     return(setpgid(p->pid,j->pgid));
 }
-
-
-char init_dir[] = "~";
-char * PWD = init_dir;
 
 
 /* Creates the context for a new child by setting the pid, pgid and tcsetpgrp */
@@ -62,10 +61,8 @@ void spawn_job(job_t *j, bool fg)
 
 	pid_t pid;
 	process_t *p;
-	int fd[2]; //might need this for later io redirection
+	int fd[2]={0,0}; //might need this for later io redirection
 
-	
-	
 	for(p = j->first_process; p; p = p->next) {
 
 	  /* YOUR CODE HERE? */
@@ -93,6 +90,48 @@ void spawn_job(job_t *j, bool fg)
 	    
 	    //TODO: REDIRECT STDIN AND STDOUT
 
+	    //redirect input (<)
+	    if (p->ifile)
+	      {
+		if((fd[0]=open(p->ifile,O_RDONLY))<0)
+		  {
+		    perror("failed to open ifile");
+		    exit(EXIT_FAILURE);
+		  }
+		if((dup2(fd[0],0)<0)){
+		    perror("failed ifile dup");
+		    exit(EXIT_FAILURE);
+		  }
+	      }
+	       //redirect input (<)
+	    if (p->ofile)
+	      {
+		if((fd[1]=open(p->ifile,O_CREAT&O_RDWR))<0)
+		  {
+		    perror("failed to open ofile");
+		    exit(EXIT_FAILURE);
+		  }
+		if((dup2(fd[1],1)<0)){
+		    perror("failed ofile dup");
+		    exit(EXIT_FAILURE);
+		  }
+	      }
+
+	    
+	    /*
+	    if (p->next)
+	      {
+		
+	    if (pipe(fd)==-1)
+	      {
+		perror("pipe");
+		exit(EXIT_FAILURE);
+	      }
+	      }
+	    */
+	    
+	    
+
 	    execvp(p->argv[0],p->argv); //TODO: change to execvP for cd purposes
 
 	    //an error occurred in execvp
@@ -104,9 +143,11 @@ void spawn_job(job_t *j, bool fg)
             /* establish child process group */
             p->pid = pid;
             set_child_pgid(j, p);
-
-	 
-            /* YOUR CODE HERE?  Parent-side code for new process.  */
+	    int pipefd;
+	    
+	    
+	    
+	    
           } //end switch
 
 	  seize_tty(getpid()); //assign the terminal back to dsh
@@ -226,8 +267,7 @@ int main()
 
         /* Only for debugging purposes to show parser output; turn off in the
          * final code */
-
-	//          if(PRINT_INFO) print_job(j);
+	          if(PRINT_INFO) print_job(j);
 
 
 	/*add spawned job to job_list */
@@ -271,20 +311,24 @@ int main()
 		  delete_job(j,job_list);
 		  j=tmpj;
 		  continue;
-		  
 		}
 		else if (WIFSTOPPED(p->status)) {
 		  //printf("stopped child of pgid %d\n",j->pgid);
 		  j->notified=true;
 		  p->stopped=true;
 		}
+		
 	      } //end large if
 	    else 
-	      {
-		delete_job(j,job_list); //remove built in command from jobs list
+	      { //TODO: EXTRACT THIS INTO SEPARATE FXN
+		job_t * tmpj=j->next;
+		delete_job(j,job_list);
+		j=tmpj;
+		continue;
+		
 	      }
-	    
 	    j=j->next;
+	    
 	  } //end while
 	  
 	} //end infinite while
