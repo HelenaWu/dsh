@@ -3,12 +3,69 @@
 void seize_tty(pid_t callingprocess_pgid); /* Grab control of the terminal for the calling process pgid.  */
 void continue_job(job_t *j); /* resume a stopped job */
 void spawn_job(job_t *j, bool fg); /* spawn a new job */
+void setifile(process_t *p); /* opens file and dups to process stdin */
+void setofile(process_t *p); /* opens file and dups to process stdout */
 
 job_t * job_list; /* keeps track of running/stopped jobs*/
 job_t * job_list; 
 char init_dir[MAX_LEN_FILENAME] = "~";
 char * PWD = init_dir;
+FILE * LOG = NULL; /* for dsh.log */
 
+
+//TODO: COMBINE FUNCTIONS
+void setifile(process_t *p)
+{
+  int fd;
+  
+  //redirect input (<)
+  if (p->ifile)
+    {
+      if((fd=open(p->ifile,O_RDONLY))<0)
+	{
+	  fprintf(LOG, "failed to open ifile \n");
+		    
+	  perror("failed to open ifile");
+	  exit(EXIT_FAILURE);
+	}
+      close(0);
+		
+      if((dup2(fd,0)<0)){
+	fprintf(LOG, "failed ifile dup \n");
+		  
+	perror("failed ifile dup");
+	exit(EXIT_FAILURE);
+      }
+      close(fd);
+		
+    }
+}
+
+void setofile(process_t *p)
+{
+  int fd;
+  
+  //redirect output (>)
+  if (p->ofile)
+    {
+      if((fd=open(p->ofile,(O_RDWR|O_CREAT),(S_IRWXU|S_IRWXG|S_IROTH)))<0)
+	{
+	  fprintf(LOG,"failed to open ofile");
+		    
+	  //perror("failed to open ofile");
+	  exit(EXIT_FAILURE);
+	}
+      close(1);
+      if((dup2(fd,1)<0)){
+	fprintf(LOG,"failed ofile dup");
+		  
+	//perror("failed ofile dup");
+	exit(EXIT_FAILURE);
+      }
+      close(fd);
+		
+    }
+}
 
 
 /* Sets the process group id for a given job and process */
@@ -18,7 +75,6 @@ int set_child_pgid(job_t *j, process_t *p)
     j->pgid = p->pid;
   return(setpgid(p->pid,j->pgid));
 }
-
 
 /* Creates the context for a new child by setting the pid, pgid and tcsetpgrp */
 void new_child(job_t *j, process_t *p, bool fg)
@@ -68,7 +124,6 @@ void spawn_job(job_t *j, bool fg)
   prev_proc->ofile = "init";
   pid_t pid;
   process_t *p;
-  int fd[2]={0,0}; //might need this for later io redirection
   static int fdp[2]; //file descriptors for pipe
   
   pipe(fdp);
@@ -105,31 +160,11 @@ void spawn_job(job_t *j, bool fg)
       
       
       //redirect input (<)
-      if (p->ifile)
-	{
-	  if((fd[0]=open(p->ifile,O_RDONLY))<0)
-	    {
-	      perror("failed to open ifile");
-	      exit(EXIT_FAILURE);
-	    }
-	  if((dup2(fd[0],0)<0)){
-	    perror("failed ifile dup");
-	    exit(EXIT_FAILURE);
-	  }
-	}
+      setifile(p);
+      
       //redirect output (>)
-      if (p->ofile)
-	{
-	  if((fd[1]=open(p->ofile,(O_RDWR|O_CREAT),(S_IRWXU|S_IRWXG|S_IROTH)))<0)
-	    {
-	      perror("failed to open ofile");
-	      exit(EXIT_FAILURE);
-	    }
-	  if((dup2(fd[1],1)<0)){
-	    perror("failed ofile dup");
-	    exit(EXIT_FAILURE);
-	  }
-	}
+      setofile(p);
+      
       //TODO: PIPES
       if(p->next!=NULL){
 	if(!p->ofile && !p->next->ifile){
@@ -140,14 +175,12 @@ void spawn_job(job_t *j, bool fg)
 	}
       }
 
-
-
       if(!p->ifile && !prev_proc->ofile){
 	printf("this is C2: %s\n", p->argv[0]);
 	close(fdp[1]);
 	close(0);
 	dup2(fdp[0],0);
-   }
+      }
 
 
       execvp(p->argv[0],p->argv); //TODO: change to execvP for cd purposes?
@@ -178,7 +211,11 @@ void spawn_job(job_t *j, bool fg)
 void continue_job(job_t *j) 
 {
   if(kill(-j->pgid, SIGCONT) < 0)
-    perror("kill(SIGCONT)");
+    {
+      
+      fprintf(LOG,"kill(SIGCONT)");
+      perror("kill(SIGCONT)");
+    }
 }
 
 
@@ -197,34 +234,25 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 	  
     exit(EXIT_SUCCESS);
   }
-  else if(!strcmp("ls", argv[0])){
-    printf("PWD is %s\n", PWD);
-    DIR * dir = opendir(PWD);
-    if(dir == NULL){
-      printf("failed to open file.\n");
-    }
-    if(dir){
-      printf("printing my own ls");
-
-      struct dirent * item;
-      while((item=readdir(dir))){
-	printf("%s ", item->d_name);
-      }
-      printf("\n");
-    }
-  }
   else if (!strcmp("jobs", argv[0])) {
     /* Your code here */
     print_job(job_list->next);
-
     return true;
   }
   else if (!strcmp("cd", argv[0])) {
     /* Your code here */
     char * path = argv[1];
-    strcpy(PWD, path);
+    strcpy(PWD,path);
 
-    return true; //can improve
+    if(chdir(path)<0)
+      {
+	perror("failed cd");
+	exit(EXIT_FAILURE);
+      }
+    char buf[50];
+    getcwd(buf,50);
+    printf("changed to path:%s\n",buf);
+    return true; 
   }
   else if (!strcmp("bg", argv[0])) {
     /* Your code here */
@@ -244,6 +272,9 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 	  last_suspended_j = j;
 	}
 	continue_job(last_suspended_j);
+	last_suspended_j->bg=false;
+	fprintf(LOG,"fg pgid: %ld\n",(long)last_suspended_j->pgid);
+	      
 	seize_tty(last_suspended_j->pgid);
 	return true;
       }
@@ -257,13 +288,13 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
       }
       if(j==NULL){
 	//log this error!
-	FILE * f = NULL;
-	f = fopen("dsh.log", "a+");
-	fprintf(f, "pgid: %ld doesn't exist\n",(long)pgid);
-	fclose(f);
+	fprintf(LOG, "pgid: %ld doesn't exist\n",(long)pgid);
 	exit(1);
       }
       continue_job(j);
+      j->bg=false;
+      fprintf(LOG,"fg pgid: %ld\n",(long)j->pgid);
+	    
       seize_tty(pgid);
       return true;
     }
@@ -288,6 +319,8 @@ int main()
 
   init_dsh();
   DEBUG("Successfully initialized\n");
+  LOG = fopen("dsh.log", "a+");
+  fprintf(LOG,"\n===\n BEGIN LOG OF DSH %d\n===\n",getpid());
 
   while(1) {
     job_t *j = NULL;
@@ -312,7 +345,6 @@ int main()
     }
     else{
       job_list = realloc(job_list, sizeof(job_t) + sizeof(job_list));
-	
     }
     job_t *last_job  = find_last_job(job_list);
     last_job->next = j;
@@ -325,12 +357,9 @@ int main()
 	if(!builtin_cmd(j,p->argc,p->argv)){
 	      
 	  spawn_job(j,!(j->bg));
-		
 	  //check job status
 	  if (j->bg) { //do not wait for job to finish
 	    waitpid(-1,&p->status,WNOHANG);
-	    printf("run job in bg\n");
-		    
 	    seize_tty(getpid());
 	  } else {
 	    waitpid(-1,&p->status,0);
@@ -340,6 +369,8 @@ int main()
 	  //TODO: MOVE THESE TO OTHER AREA FOR DEALING WITH BG/FG CMDS?
 	  if (WIFEXITED(p->status)) {
 	    //printf("exited properly\n");
+	    fprintf(LOG,"%d:%s exited properly\n",p->pid,p->argv[0]);
+		  
 	    p->completed=true;
 	    job_t * tmpj=j->next;
 	    delete_job(j,job_list);
@@ -348,6 +379,8 @@ int main()
 	  }
 	  else if (WIFSTOPPED(p->status)) {
 	    //printf("stopped child of pgid %d\n",j->pgid);
+	    fprintf(LOG,"%d:%s was stopped\n",p->pid,p->argv[0]);
+		  
 	    j->notified=true;
 	    p->stopped=true;
 	  }
@@ -367,4 +400,9 @@ int main()
       } //end while
 	  
   } //end infinite while
+
+    //close dsh.log
+  fprintf(LOG,"\n===\n END LOG\n===\n");
+  fclose(LOG);
+  exit(1);
 }
