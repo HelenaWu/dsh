@@ -121,17 +121,19 @@ void new_child(job_t *j, process_t *p, bool fg)
 
 void spawn_job(job_t *j, bool fg) 
 {
-
+  printf("spawn called \n");
+  
   // process_t * prev_proc = malloc(sizeof(process_t));
   //prev_proc->ofile = "init";
   pid_t pid;
   process_t *p;
-  static int fdp[2]; //file descriptors for pipe
-  static int fdprev[2];
+  int fdp[2]; //file descriptors for pipe
+  int fdprev_read;
+  
   fdp[0]=STDIN_FILENO;
   fdp[1]=STDOUT_FILENO;
-  fdprev[0]=fdp[0];
-  fdprev[1]=fdp[1];
+  
+  fdprev_read=fdp[0];
 
   for(p = j->first_process; p; p = p->next) {
     
@@ -168,32 +170,27 @@ void spawn_job(job_t *j, bool fg)
 	      close(1);
 	      dup2(fdp[1],1); //stdout end
 	      close(fdp[1]);
-	      //close(fdp[0]);
+	      close(fdp[0]); 
 	    }
 	  else { //middle process
 	    close(0);
 	    close(1);
 	    
-	    dup2(fdprev[0],0);
+	    dup2(fdprev_read,0);
 	    dup2(fdp[1],1);
 
-	    close(fdprev[0]);
+	    close(fdprev_read);
 	    close(fdp[1]);
-	    
-	    //close(fdp[0]); 
-	    //close(fdprev[1]);
-	    
+	    close(fdp[0]);
 	  }
 	  
 	}
-      else if(fdprev[0]!=STDIN_FILENO) //last process
-	{
-	  
+      else if(fdprev_read!=STDIN_FILENO) //last process
+	{ 
 	  setofile(p);
 	  close(0);
-	  dup2(fdprev[0],0);
-	  close(fdprev[0]);
-	  close(fdprev[1]);
+	  dup2(fdprev_read,0);
+	  close(fdprev_read);
 	  close(fdp[0]);
 	  close(fdp[1]);
 	  
@@ -220,29 +217,41 @@ void spawn_job(job_t *j, bool fg)
       p->pid = pid;
       set_child_pgid(j, p);
       
+      if(fdprev_read!=STDIN_FILENO)
+	{
+	  close(fdprev_read);
+	  fdprev_read=fdp[0];
+	}
+      else if (!p->next)
+	{
+	  close(fdp[0]);
+	} else {
+	fdprev_read=fdp[0];
+      }
+      
+      close(fdp[1]);
+      //close(fdp[0]);
+
       /*
       if (p->next)
 	{
 	  if (p==j->first_process)
 	    {
-	      fdprev[0]=fdp[0];
+	      fdprev_read=fdp[0];
 	      close(fdp[1]);
+	      //close(fdp[0]);
+	    } else {
+	    fdprev_read
 	    }
-	}
       */
-      fdprev[0]=fdp[0];
-      fdprev[1]=fdp[1];
-      close(fdp[0]);
-      close(fdp[1]);
-      
-      
+
       
       
       /* YOUR CODE HERE?  Parent-side code for new process.  */	    
       //close(fdp[1]); //close pipe from parent
     } //end switch
 
-    seize_tty(getpid()); //assign the terminal back to dsh
+    //seize_tty(getpid()); //assign the terminal back to dsh
 
     // prev_proc = p;
   } //end loop
@@ -405,17 +414,15 @@ int main()
 	    seize_tty(getpid());
 	  } else {
 	    waitpid(-1,&p->status,0);
-	    
 	    seize_tty(getpid()); // assign the terminal back to dsh
 	  }
 
 	  //TODO: MOVE THESE TO OTHER AREA FOR DEALING WITH BG/FG CMDS?
 	  if (WIFEXITED(p->status)) {
-	    //printf("exited properly\n");
+	    printf("exited properly\n");
 	    fprintf(LOG,"%d:%s exited properly\n",p->pid,p->argv[0]);
 		  
 	    p->completed=true;
-	    
 
 	    job_t * tmpj=j->next;
 	    delete_job(j,job_list);
@@ -423,7 +430,7 @@ int main()
 	    continue;
 	  }
 	  else if (WIFSTOPPED(p->status)) {
-	    //printf("stopped child of pgid %d\n",j->pgid);
+	    printf("stopped child of pgid %d\n",j->pgid);
 	    fprintf(LOG,"%d:%s was stopped\n",p->pid,p->argv[0]);
 		  
 	    j->notified=true;
@@ -434,6 +441,8 @@ int main()
 	else 
 	  { //TODO: EXTRACT THIS INTO SEPARATE FXN
 
+	    printf("built in\n");
+	    
 	    job_t * tmpj=j->next;
 	    delete_job(j,job_list);
 	    j=tmpj;
