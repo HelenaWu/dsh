@@ -21,9 +21,11 @@ void setifile(process_t *p)
   //redirect input (<)
   if (p->ifile)
     {
+      printf("redir ifile\n");
+      
       if((fd=open(p->ifile,O_RDONLY))<0)
 	{
-	  fprintf(LOG, "failed to open ifile \n");
+	  fprintf(LOG, "failed to open ifile %s\n",p->ifile);
 		    
 	  perror("failed to open ifile");
 	  exit(EXIT_FAILURE);
@@ -36,8 +38,7 @@ void setifile(process_t *p)
 	perror("failed ifile dup");
 	exit(EXIT_FAILURE);
       }
-      close(fd);
-		
+      close(fd);	
     }
 }
 
@@ -48,9 +49,11 @@ void setofile(process_t *p)
   //redirect output (>)
   if (p->ofile)
     {
+      printf("redir ofile\n");
+      
       if((fd=open(p->ofile,(O_RDWR|O_CREAT),(S_IRWXU|S_IRWXG|S_IROTH)))<0)
 	{
-	  fprintf(LOG,"failed to open ofile");
+	  fprintf(LOG,"failed to open ofile %s\n",p->ofile);
 		    
 	  //perror("failed to open ofile");
 	  exit(EXIT_FAILURE);
@@ -63,7 +66,6 @@ void setofile(process_t *p)
 	exit(EXIT_FAILURE);
       }
       close(fd);
-		
     }
 }
 
@@ -120,19 +122,21 @@ void new_child(job_t *j, process_t *p, bool fg)
 void spawn_job(job_t *j, bool fg) 
 {
 
-  process_t * prev_proc = malloc(sizeof(process_t));
-  prev_proc->ofile = "init";
+  // process_t * prev_proc = malloc(sizeof(process_t));
+  //prev_proc->ofile = "init";
   pid_t pid;
   process_t *p;
   static int fdp[2]; //file descriptors for pipe
-  
-  pipe(fdp);
-  
-  
+  static int fdprev[2];
+  fdp[0]=STDIN_FILENO;
+  fdp[1]=STDOUT_FILENO;
+  fdprev[0]=fdp[0];
+  fdprev[1]=fdp[1];
+
   for(p = j->first_process; p; p = p->next) {
     
     /* Builtin commands are already taken care earlier */
-    
+    pipe(fdp);
     
     switch (pid = fork()) {
       
@@ -154,34 +158,54 @@ void spawn_job(job_t *j, bool fg)
 	}
       fprintf(stdout,"\n");
 
-      
-    
       //TODO: PIPES, file descriptor close?
       
-      
-      //redirect input (<)
-      setifile(p);
-      
-      //redirect output (>)
-      setofile(p);
-      
-      //TODO: PIPES
-      if(p->next!=NULL){
-	if(!p->ofile && !p->next->ifile){
-	  printf("this is C1: %s\n", p->argv[0]);
-	  close(fdp[0]);
-	  close(1);
-	  dup2(fdp[1],1);
+      if (p->next)
+	{
+	  if(p==j->first_process) //first process
+	    {
+	      setifile(p);
+	      close(1);
+	      dup2(fdp[1],1); //stdout end
+	      close(fdp[1]);
+	      //close(fdp[0]);
+	    }
+	  else { //middle process
+	    close(0);
+	    close(1);
+	    
+	    dup2(fdprev[0],0);
+	    dup2(fdp[1],1);
+
+	    close(fdprev[0]);
+	    close(fdp[1]);
+	    
+	    //close(fdp[0]); 
+	    //close(fdprev[1]);
+	    
+	  }
+	  
 	}
-      }
-
-      if(!p->ifile && !prev_proc->ofile){
-	printf("this is C2: %s\n", p->argv[0]);
+      else if(fdprev[0]!=STDIN_FILENO) //last process
+	{
+	  
+	  setofile(p);
+	  close(0);
+	  dup2(fdprev[0],0);
+	  close(fdprev[0]);
+	  close(fdprev[1]);
+	  close(fdp[0]);
+	  close(fdp[1]);
+	  
+	}
+      
+      else { //freestanding process
+	
+	close(fdp[0]);
 	close(fdp[1]);
-	close(0);
-	dup2(fdp[0],0);
+	setifile(p);
+	setofile(p);
       }
-
 
       execvp(p->argv[0],p->argv); //TODO: change to execvP for cd purposes?
 
@@ -195,14 +219,32 @@ void spawn_job(job_t *j, bool fg)
       /* establish child process group */
       p->pid = pid;
       set_child_pgid(j, p);
-
+      
+      /*
+      if (p->next)
+	{
+	  if (p==j->first_process)
+	    {
+	      fdprev[0]=fdp[0];
+	      close(fdp[1]);
+	    }
+	}
+      */
+      fdprev[0]=fdp[0];
+      fdprev[1]=fdp[1];
+      close(fdp[0]);
+      close(fdp[1]);
+      
+      
+      
+      
       /* YOUR CODE HERE?  Parent-side code for new process.  */	    
-      close(fdp[1]); //close pipe from parent
+      //close(fdp[1]); //close pipe from parent
     } //end switch
 
     seize_tty(getpid()); //assign the terminal back to dsh
 
-    prev_proc = p;
+    // prev_proc = p;
   } //end loop
 
 }
@@ -231,7 +273,8 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 
   if (!strcmp(argv[0], "quit")) {
     /* Your code here */
-	  
+	fflush(stdout);
+	printf("\n");
     exit(EXIT_SUCCESS);
   }
   else if (!strcmp("jobs", argv[0])) {
@@ -301,7 +344,6 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
   }
   return false;       /* not a builtin command */
 }
-
 /* Build prompt message */
 char* promptmsg() 
 {
@@ -335,7 +377,7 @@ int main()
 
     /* Only for debugging purposes to show parser output; turn off in the
      * final code */
-    //    if(PRINT_INFO) print_job(j);
+        if(PRINT_INFO) print_job(j);
 
 
     /*add spawned job to job_list */
@@ -352,7 +394,7 @@ int main()
     while(j)
       {
 	process_t *p=j->first_process;
-	// printf("\n ==== \njob: %s\n",j->commandinfo);
+
 	//a built in will always be its own job ie a process group of 1
 	if(!builtin_cmd(j,p->argc,p->argv)){
 	      
@@ -363,6 +405,7 @@ int main()
 	    seize_tty(getpid());
 	  } else {
 	    waitpid(-1,&p->status,0);
+	    
 	    seize_tty(getpid()); // assign the terminal back to dsh
 	  }
 
@@ -372,6 +415,8 @@ int main()
 	    fprintf(LOG,"%d:%s exited properly\n",p->pid,p->argv[0]);
 		  
 	    p->completed=true;
+	    
+
 	    job_t * tmpj=j->next;
 	    delete_job(j,job_list);
 	    j=tmpj;
