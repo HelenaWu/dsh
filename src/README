@@ -8,18 +8,24 @@
 
 	Name1: Helena Wu 	// Edit this accordingly
 	NetId1: hw87	 	// Edit
-	Time spent: 10 hours 	// Edit 
+	Time spent: 15 hours 	// Edit 
 
 	Name2: Wendy Yin 	// Edit this accordingly
 	NetId2: wty3	 	// Edit
-	Time spent: 10 hours 	// Edit 
+	Time spent: 15 hours 	// Edit 
 
 /******************
  * Files to submit
  ******************/
 
-	dsh.c 	// Header file is not necessary; other *.c files if necessary
+	dsh.c 	// Header file is not necessary; other *.c files if
+	necessary
 	README	// This file filled with the lab implementation details
+
+/******!!!*****/
+	helper.c //modify seize_tty by wrapping tcsetpgrp in
+	if(dsh_is_interactive) so the code can run batch files
+/******!!!*****/
 
 Files also accessible at https://github.com/HelenaWu/dsh
 
@@ -44,6 +50,10 @@ Files also accessible at https://github.com/HelenaWu/dsh
  * details to maximize your partial credit.  
  * */
 
+The fg/bg support is limited, as we did not implement bg. 
+
+
+
 /************************
  * Feedback on the lab
  ************************/
@@ -62,5 +72,6 @@ Files also accessible at https://github.com/HelenaWu/dsh
  * */
 Consulted: 
 -man pages
--CS:APP2	http://www.cs.duke.
-edu/courses/spring13/compsci210/internal/controlflow.pdf
+-CS:APP2
+http://www.cs.duke.edu/courses/spring13/compsci210/internal/controlflow.pdf
+-Stack Overflow for file descriptors in the pipeline: http://stackoverflow.com/a/917700
