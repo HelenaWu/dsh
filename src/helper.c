@@ -112,10 +112,15 @@ void seize_tty(pid_t callingprocess_pgid)
 {
 	/* Grab control of the terminal.  */
 	/* Don't call this until other initialization is complete */
+  if(dsh_is_interactive)
+    {
+      
 	if(tcsetpgrp(STDIN_FILENO, callingprocess_pgid) < 0) {
 		perror("tcsetpgrp failure");
 		exit(EXIT_FAILURE);
 	}
+    }
+  
 }
 
 /* If dsh is running interactively as the foreground job
