@@ -6,69 +6,55 @@ void spawn_job(job_t *j, bool fg); /* spawn a new job */
 void setifile(process_t *p); /* opens file and dups to process stdin */
 void setofile(process_t *p); /* opens file and dups to process stdout */
 
+
+bool LOG_TO_FILE=true;
 job_t * job_list; /* keeps track of running/stopped jobs*/
 job_t * job_list; 
 char init_dir[MAX_LEN_FILENAME] = "~";
 char * PWD = init_dir;
 FILE * LOG = NULL; /* for dsh.log */
 
-
-//TODO: COMBINE FUNCTIONS
+//redirect input (<)
 void setifile(process_t *p)
 {
   int fd;
-  
-  //redirect input (<)
   if (p->ifile)
     {
-      printf("redir ifile\n");
-      
       if((fd=open(p->ifile,O_RDONLY))<0)
 	{
-	  fprintf(LOG, "failed to open ifile %s\n",p->ifile);
-		    
+	  //fprintf(LOG, "failed to open ifile %s\n",p->ifile);
 	  perror("failed to open ifile");
 	  exit(EXIT_FAILURE);
 	}
       close(0);
-		
       if((dup2(fd,0)<0)){
-	fprintf(LOG, "failed ifile dup \n");
-		  
-	perror("failed ifile dup");
+	perror("Error");
 	exit(EXIT_FAILURE);
       }
       close(fd);	
     }
 }
 
+//redirect output (>)
 void setofile(process_t *p)
 {
   int fd;
-  
-  //redirect output (>)
   if (p->ofile)
     {
-      printf("redir ofile\n");
-      
       if((fd=open(p->ofile,(O_RDWR|O_CREAT),(S_IRWXU|S_IRWXG|S_IROTH)))<0)
 	{
-	  fprintf(LOG,"failed to open ofile %s\n",p->ofile);
-		    
-	  //perror("failed to open ofile");
+	  //fprintf(LOG,"failed to open ofile %s\n",p->ofile);
+	  perror("failed to open ofile");
 	  exit(EXIT_FAILURE);
 	}
       close(1);
       if((dup2(fd,1)<0)){
-	fprintf(LOG,"failed ofile dup");
-		  
-	//perror("failed ofile dup");
+	perror("Error");
 	exit(EXIT_FAILURE);
       }
       close(fd);
     }
 }
-
 
 /* Sets the process group id for a given job and process */
 int set_child_pgid(job_t *j, process_t *p)
@@ -96,13 +82,11 @@ void new_child(job_t *j, process_t *p, bool fg)
   /* also establish child process group in child to avoid race (if parent has not done it yet). */
   set_child_pgid(j, p);
 
-
   if(fg) // if fg is set
     {
       seize_tty(j->pgid); // assign the terminal
     }
 
-	 
   /* Set the handling for job control signals back to the default. */
   signal(SIGTTOU, SIG_DFL);
 }
@@ -116,15 +100,8 @@ void new_child(job_t *j, process_t *p, bool fg)
  * pgid: this feature is used to start the second or 
  * subsequent processes in a pipeline.
  * */
-
-
-
 void spawn_job(job_t *j, bool fg) 
 {
-  printf("spawn called \n");
-  
-  // process_t * prev_proc = malloc(sizeof(process_t));
-  //prev_proc->ofile = "init";
   pid_t pid;
   process_t *p;
   int fdp[2]; //file descriptors for pipe
@@ -148,8 +125,7 @@ void spawn_job(job_t *j, bool fg)
 	    
     case 0: /* child process  */
       p->pid = getpid();	    
-      new_child(j, p, fg);	    
-      
+      new_child(j, p, fg);
       
       //print args to terminal
       fprintf(stdout,"\n%d(Launched): ",p->pid);
@@ -159,20 +135,23 @@ void spawn_job(job_t *j, bool fg)
 	  fprintf(stdout,"%s ",p->argv[i]);
 	}
       fprintf(stdout,"\n");
-
-      //TODO: PIPES, file descriptor close?
       
       if (p->next)
 	{
 	  if(p==j->first_process) //first process
 	    {
+	      //fprintf(LOG,"setting up first process %s\n",p->argv[0]);
 	      setifile(p);
 	      close(1);
 	      dup2(fdp[1],1); //stdout end
 	      close(fdp[1]);
 	      close(fdp[0]); 
+	      if(p->ofile) fprintf(stderr,"first process in pipeline not allowed output file\n");
+	      
 	    }
 	  else { //middle process
+	    //fprintf(LOG,"setting up mid process %s\n",p->argv[0]);
+	    
 	    close(0);
 	    close(1);
 	    
@@ -182,21 +161,25 @@ void spawn_job(job_t *j, bool fg)
 	    close(fdprev_read);
 	    close(fdp[1]);
 	    close(fdp[0]);
+	    if (p->ifile || p->ofile) fprintf(stderr,"process in middle of pipeline not allowed input or output file\n");
+	    
 	  }
 	  
 	}
       else if(fdprev_read!=STDIN_FILENO) //last process
-	{ 
+	{
+	  //fprintf(LOG,"last process %s\n",p->argv[0]);
 	  setofile(p);
 	  close(0);
 	  dup2(fdprev_read,0);
 	  close(fdprev_read);
 	  close(fdp[0]);
 	  close(fdp[1]);
-	  
+	  if (p->ifile) fprintf(stderr,"tail of pipeline not allowed input file\n"); 
 	}
       
       else { //freestanding process
+	//fprintf(LOG,"free proc %s\n",p->argv[0]);
 	
 	close(fdp[0]);
 	close(fdp[1]);
@@ -230,30 +213,10 @@ void spawn_job(job_t *j, bool fg)
       }
       
       close(fdp[1]);
-      //close(fdp[0]);
-
-      /*
-      if (p->next)
-	{
-	  if (p==j->first_process)
-	    {
-	      fdprev_read=fdp[0];
-	      close(fdp[1]);
-	      //close(fdp[0]);
-	    } else {
-	    fdprev_read
-	    }
-      */
-
-      
-      
-      /* YOUR CODE HERE?  Parent-side code for new process.  */	    
-      //close(fdp[1]); //close pipe from parent
     } //end switch
 
-    //seize_tty(getpid()); //assign the terminal back to dsh
+    seize_tty(getpid()); //assign the terminal back to dsh
 
-    // prev_proc = p;
   } //end loop
 
 }
@@ -263,8 +226,6 @@ void continue_job(job_t *j)
 {
   if(kill(-j->pgid, SIGCONT) < 0)
     {
-      
-      fprintf(LOG,"kill(SIGCONT)");
       perror("kill(SIGCONT)");
     }
 }
@@ -281,18 +242,16 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
    */
 
   if (!strcmp(argv[0], "quit")) {
-    /* Your code here */
-	fflush(stdout);
-	printf("\n");
+    fprintf(stderr,"quitting %d",getpid());
+    fflush(stdout);
+    printf("\n");
     exit(EXIT_SUCCESS);
   }
   else if (!strcmp("jobs", argv[0])) {
-    /* Your code here */
-    print_job(job_list->next);
+    print_job(job_list->next); //skip past the empty header
     return true;
   }
   else if (!strcmp("cd", argv[0])) {
-    /* Your code here */
     char * path = argv[1];
     strcpy(PWD,path);
 
@@ -303,7 +262,7 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
       }
     char buf[50];
     getcwd(buf,50);
-    printf("changed to path:%s\n",buf);
+    printf("changed to path: %s\n",buf);
     return true; 
   }
   else if (!strcmp("bg", argv[0])) {
@@ -313,7 +272,6 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
     return true;
   }
   else if (!strcmp("fg", argv[0])) {
-    /* Your code here */
     //Bring into foreground job given pgid
     job_t * j;
     if(argv[1] == NULL){
@@ -325,7 +283,7 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 	}
 	continue_job(last_suspended_j);
 	last_suspended_j->bg=false;
-	fprintf(LOG,"fg pgid: %ld\n",(long)last_suspended_j->pgid);
+	//fprintf(LOG,"fg pgid: %ld\n",(long)last_suspended_j->pgid);
 	      
 	seize_tty(last_suspended_j->pgid);
 	return true;
@@ -340,23 +298,65 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
       }
       if(j==NULL){
 	//log this error!
-	fprintf(LOG, "pgid: %ld doesn't exist\n",(long)pgid);
+	fprintf(stderr, "In fg: pgid: %ld doesn't exist\n",(long)pgid);
 	exit(1);
       }
       continue_job(j);
       j->bg=false;
-      fprintf(LOG,"fg pgid: %ld\n",(long)j->pgid);
-	    
+
+      fprintf(stderr,"Bringing job %d to foreground\n",j->pgid);
       seize_tty(pgid);
       return true;
     }
   }
+  else if (endswith(argv[0],".c")){
+    //hard code in two new jobs - a gcc and call to new executable
+      job_t *nxt=last_job->next;
+      job_t *compiler=malloc(sizeof(job_t));
+      job_t *executer=malloc(sizeof(job_t));
+      init_job(compiler);
+      init_job(executer);
+      last_job->next=compiler;
+      compiler->next=executer;
+      executer->next=nxt;
+
+      char buf[MAX_LEN_CMDLINE];
+      sprintf(buf,"gcc -o devil %s",argv[0]);
+      strcpy(compiler->commandinfo,buf);
+      
+      compiler->first_process=malloc(sizeof(process_t));
+      init_process(compiler->first_process);
+
+      compiler->first_process->argc=4;
+      compiler->first_process->argv[0]=(char *)calloc(MAX_LEN_CMDLINE,sizeof(char));
+      strcpy(compiler->first_process->argv[0],"gcc");
+      compiler->first_process->argv[1]=(char *)calloc(MAX_LEN_CMDLINE,sizeof(char));
+      strcpy(compiler->first_process->argv[1],"-o");
+      compiler->first_process->argv[2]=(char *)calloc(MAX_LEN_CMDLINE,sizeof(char));
+      strcpy(compiler->first_process->argv[2],"devil");
+      compiler->first_process->argv[3]=(char *)calloc(MAX_LEN_CMDLINE,sizeof(char));
+      strcpy(compiler->first_process->argv[3],argv[0]);
+      compiler->first_process->argv[4]=NULL;
+      
+      strcpy(executer->commandinfo,"./devil");
+
+      executer->first_process=malloc(sizeof(process_t));
+      init_process(executer->first_process);
+
+      executer->first_process->argc=1;
+      executer->first_process->argv[0]=(char *)calloc(MAX_LEN_CMDLINE,sizeof(char));
+      strcpy(executer->first_process->argv[0],"./devil");
+      executer->first_process->argv[1]=NULL;
+      
+      return true;
+    }
+    
   return false;       /* not a builtin command */
 }
 /* Build prompt message */
 char* promptmsg() 
 {
-  static  char prompt[MAX_LEN_CMDLINE]; //bit arbitrary in length
+  static char prompt[MAX_LEN_CMDLINE]; //bit arbitrary in length
 
   pid_t pid;
   pid = getpid();
@@ -370,23 +370,31 @@ int main()
 
   init_dsh();
   DEBUG("Successfully initialized\n");
-  LOG = fopen("dsh.log", "a+");
-  fprintf(LOG,"\n===\n BEGIN LOG OF DSH %d\n===\n",getpid());
+  if (LOG_TO_FILE)
+    {
+      int fd=open("dsh.log",(O_RDWR|O_CREAT),(S_IRWXU|S_IRWXG|S_IROTH));
+      close(2);
+      dup2(fd,2);
+      close(fd);
+      fprintf(stderr,"\n===\n BEGIN LOG OF DSH %d\n===\n",getpid());
+    }
 
   while(1) {
     job_t *j = NULL;
     if(!(j = readcmdline(promptmsg()))) {
       if (feof(stdin)) { /* End of file (ctrl-d) */
-	fflush(stdout);
-	printf("\n");
-	exit(EXIT_SUCCESS);
+
+    fprintf(stderr,"quitting %d\n",getpid());
+    fflush(stdout);
+    printf("\n");
+    exit(EXIT_SUCCESS);
       }
       continue; /* NOOP; user entered return or spaces with return */
     }
 
     /* Only for debugging purposes to show parser output; turn off in the
      * final code */
-        if(PRINT_INFO) print_job(j);
+    //    if(PRINT_INFO) print_job(j);
 
 
     /*add spawned job to job_list */
@@ -409,21 +417,39 @@ int main()
 	      
 	  spawn_job(j,!(j->bg));
 	  //check job status
+
 	  if (j->bg) { //do not wait for job to finish
+	    //fprintf(LOG,"job %s:%d is in bg, curr:%d\n",p->argv[0],j->pgid,getpid());
+	    
 	    waitpid(-1,&p->status,WNOHANG);
 	    seize_tty(getpid());
 	  } else {
-	    waitpid(-1,&p->status,0);
+	    //fprintf(LOG,"job %s:%d is in fg, curr:%d\n",p->argv[0],j->pgid,getpid());
+	    pid_t child;
+	    //TODO: THE SUSPENDED JOB CASE
+	    while ((child=waitpid(-j->pgid,&p->status,0))>0)
+	    {
+	      while(p)
+		{
+		  if(p->pid==child) {
+		    p->completed=true;
+		    break;
+		  }
+		  p=p->next;
+		}
+	    }
+	    if(errno==ECHILD)
+	      {
+		printf("finished with job %d\n",j->pgid);
+	      }
+	    
 	    seize_tty(getpid()); // assign the terminal back to dsh
 	  }
 
 	  //TODO: MOVE THESE TO OTHER AREA FOR DEALING WITH BG/FG CMDS?
-	  if (WIFEXITED(p->status)) {
-	    printf("exited properly\n");
-	    fprintf(LOG,"%d:%s exited properly\n",p->pid,p->argv[0]);
-		  
-	    p->completed=true;
-
+	if (job_is_completed(j)) {
+	    printf("%d of %d exited \n",p->pid,j->pgid);
+	    //fprintf(LOG,"%d:%s exited \n",p->pid,p->argv[0]);
 	    job_t * tmpj=j->next;
 	    delete_job(j,job_list);
 	    j=tmpj;
@@ -431,7 +457,7 @@ int main()
 	  }
 	  else if (WIFSTOPPED(p->status)) {
 	    printf("stopped child of pgid %d\n",j->pgid);
-	    fprintf(LOG,"%d:%s was stopped\n",p->pid,p->argv[0]);
+	    //fprintf(LOG,"%d:%s was stopped\n",p->pid,p->argv[0]);
 		  
 	    j->notified=true;
 	    p->stopped=true;
@@ -440,14 +466,10 @@ int main()
 	} //end large if
 	else 
 	  { //TODO: EXTRACT THIS INTO SEPARATE FXN
-
-	    printf("built in\n");
-	    
 	    job_t * tmpj=j->next;
 	    delete_job(j,job_list);
 	    j=tmpj;
-	    continue;
-		
+	    continue;	
 	  }
 	j=j->next;
 	    
@@ -456,7 +478,7 @@ int main()
   } //end infinite while
 
     //close dsh.log
-  fprintf(LOG,"\n===\n END LOG\n===\n");
-  fclose(LOG);
+  //fprintf(LOG,"\n===\n END LOG\n===\n");
+  //fclose(LOG);
   exit(1);
 }
